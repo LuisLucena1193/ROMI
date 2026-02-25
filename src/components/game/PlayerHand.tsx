@@ -7,7 +7,7 @@ import {
   useSortable,
   arrayMove,
 } from '@dnd-kit/sortable';
-import { useDndMonitor, DragEndEvent } from '@dnd-kit/core';
+import { useDndMonitor, DragOverEvent, DragEndEvent } from '@dnd-kit/core';
 import { Card as CardComponent } from '@/components/ui/Card';
 import { Card } from '@/lib/types/game.types';
 import { CardModel } from '@/lib/models/Card';
@@ -28,6 +28,8 @@ interface PlayerHandProps {
 
 // Overlap classes: more aggressive on mobile so cards fit on small screens
 const OVERLAP_CLASS = '-ml-12 md:-ml-5'; // mobile: -3rem, desktop: -1.25rem
+// Gap indicator: on mobile shift is -3rem→-0.5rem (40px opening); desktop -1.25rem→2rem (52px)
+const GAP_CLASS = '-ml-2 md:ml-8';
 
 // ---- SortableCard sub-component ----
 
@@ -36,6 +38,7 @@ interface SortableCardProps {
   index: number;
   selected: boolean;
   isHidden: boolean;
+  showGapBefore: boolean;
   clickDisabled: boolean;
   dragDisabled: boolean;
   onCardClick: (card: Card) => void;
@@ -47,6 +50,7 @@ const SortableCard: React.FC<SortableCardProps> = ({
   index,
   selected,
   isHidden,
+  showGapBefore,
   clickDisabled,
   dragDisabled,
   onCardClick,
@@ -69,7 +73,7 @@ const SortableCard: React.FC<SortableCardProps> = ({
     [setNodeRef, setRef],
   );
 
-  const marginClass = index > 0 ? OVERLAP_CLASS : '';
+  const marginClass = showGapBefore ? GAP_CLASS : index > 0 ? OVERLAP_CLASS : '';
 
   return (
     <div
@@ -111,6 +115,7 @@ export const PlayerHand: React.FC<PlayerHandProps> = ({
   const [orderedCards, setOrderedCards] = useState<Card[]>(() =>
     [...cards].sort(CardModel.compare),
   );
+  const [overId, setOverId] = useState<string | null>(null);
 
   const savedOrderRef = useRef(savedOrder);
   savedOrderRef.current = savedOrder;
@@ -193,9 +198,16 @@ export const PlayerHand: React.FC<PlayerHandProps> = ({
   const isSelected = (card: Card) =>
     selectedCards.some((c) => c.id === card.id);
 
-  // Reorder cards when one is dropped onto another hand card
   useDndMonitor({
+    onDragOver(event: DragOverEvent) {
+      const active = event.active.data.current as HandCardDragData | undefined;
+      if (!active || active.type !== 'hand-card') return;
+      const id = event.over?.id as string | undefined;
+      const isHandCard = id ? orderedCards.some((c) => c.id === id) : false;
+      setOverId(isHandCard ? id! : null);
+    },
     onDragEnd(event: DragEndEvent) {
+      setOverId(null);
       const active = event.active.data.current as HandCardDragData | undefined;
       if (!active || active.type !== 'hand-card') return;
       const overCardId = event.over?.id as string | undefined;
@@ -206,6 +218,9 @@ export const PlayerHand: React.FC<PlayerHandProps> = ({
       const newIndex = orderedCards.findIndex((c) => c.id === overCardId);
       if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return;
       reportOrder(arrayMove(orderedCards, oldIndex, newIndex));
+    },
+    onDragCancel() {
+      setOverId(null);
     },
   });
 
@@ -247,6 +262,7 @@ export const PlayerHand: React.FC<PlayerHandProps> = ({
             {orderedCards.map((card, index) => {
               const selected = isSelected(card);
               const isHidden = hiddenCardId === card.id;
+              const showGapBefore = overId === card.id;
 
               return (
                 <SortableCard
@@ -255,6 +271,7 @@ export const PlayerHand: React.FC<PlayerHandProps> = ({
                   index={index}
                   selected={selected}
                   isHidden={isHidden}
+                  showGapBefore={showGapBefore}
                   clickDisabled={disabled}
                   dragDisabled={dragDisabled ?? disabled}
                   onCardClick={onCardClick}
