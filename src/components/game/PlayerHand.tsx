@@ -233,8 +233,8 @@ export const PlayerHand: React.FC<PlayerHandProps> = ({
   );
 
   return (
-    <div className="bg-white rounded-lg shadow-md p-4">
-      <div className="mb-2 flex justify-between items-center">
+    <div className="bg-white rounded-lg shadow-md p-2 md:p-4 shrink-0">
+      <div className="mb-1 flex justify-between items-center">
         <h3 className="font-semibold text-gray-800">Tu mano</h3>
         <div className="flex items-center gap-3">
           <button

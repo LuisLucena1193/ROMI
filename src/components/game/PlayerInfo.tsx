@@ -24,15 +24,15 @@ export const PlayerInfo: React.FC<PlayerInfoProps> = ({
 }) => {
   return (
     <div
-      className={`rounded-lg p-3 transition-all ${
+      className={`rounded-lg p-2 md:p-3 transition-all ${
         isCurrentTurn
           ? 'bg-blue-100 border-2 border-blue-500 shadow-md'
           : 'bg-white border border-gray-200'
       }`}
     >
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2">
         {/* Turn order badge */}
-        <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
+        <div className={`w-5 h-5 md:w-6 md:h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
           isCurrentTurn ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-600'
         }`}>
           {turnOrder}

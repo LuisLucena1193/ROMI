@@ -406,11 +406,10 @@ export const GameTable: React.FC<GameTableProps> = ({
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
-        <div className="min-h-screen bg-gradient-to-br from-green-800 to-green-950 p-3 md:p-4">
-          <div className="max-w-6xl mx-auto space-y-3 md:space-y-4">
-            {/* Rules button + error banner */}
-            <div className="flex justify-between items-center">
-              {/* Turn indicator */}
+        <div className="min-h-screen sm:h-dvh sm:overflow-hidden bg-gradient-to-br from-green-800 to-green-950 p-1.5 sm:p-2 md:p-4">
+          <div className="max-w-6xl mx-auto flex flex-col gap-1.5 sm:gap-2 md:gap-4 sm:h-full">
+            {/* Rules button + turn indicator */}
+            <div className="shrink-0 flex justify-between items-center">
               <div className={`text-sm font-semibold px-3 py-1 rounded-full ${
                 isMyTurn
                   ? 'bg-yellow-400 text-yellow-900'
@@ -428,13 +427,15 @@ export const GameTable: React.FC<GameTableProps> = ({
             </div>
 
             {/* Header */}
-            <GameHeader
-              currentRound={gameState.currentRound}
-              onReset={onReset}
-            />
+            <div className="shrink-0">
+              <GameHeader
+                currentRound={gameState.currentRound}
+                onReset={onReset}
+              />
+            </div>
 
             {/* All players in turn order */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="shrink-0 grid grid-cols-2 sm:grid-cols-4 gap-1.5 md:gap-3">
               {gameState.players.map((player, index) => (
                 <PlayerInfo
                   key={player.id}
@@ -446,12 +447,14 @@ export const GameTable: React.FC<GameTableProps> = ({
               ))}
             </div>
 
-            {/* Table center */}
-            <div className="bg-poker-green rounded-xl shadow-xl p-4 md:p-6 border-4 border-green-900">
-              <div className="flex flex-col md:flex-row gap-4 md:gap-6">
-                {/* Left: Deck + Discard */}
-                <div className="flex flex-col items-center gap-3 md:min-w-[11rem]">
-                  <div className="flex items-start gap-6 md:gap-8">
+            {/* Main flexible area: table (left) + hand + button (right) */}
+            <div className="flex-1 min-h-0 flex flex-col sm:flex-row gap-1.5 sm:gap-2">
+
+              {/* Table center: deck/discard + combinations (always side by side) */}
+              <div className="sm:shrink-0 bg-poker-green rounded-xl shadow-xl p-2 md:p-4 border-4 border-green-900">
+                <div className="flex items-start gap-3 md:gap-5">
+                  {/* Deck + Discard */}
+                  <div className="flex items-start gap-3 md:gap-6 shrink-0">
                     <DeckPile
                       cardsRemaining={gameState.deckCount}
                       onDraw={handleDrawFromDeckAnimated}
@@ -471,74 +474,75 @@ export const GameTable: React.FC<GameTableProps> = ({
                       cardRef={discardCardRef}
                     />
                   </div>
-                  <p className="text-xs text-green-200 text-center">
-                    {!isMyTurn
-                      ? `Esperando a ${currentPlayer.name}...`
-                      : gameState.phase !== 'playing'
-                        ? 'Ronda finalizada'
-                        : !hasDrawnThisTurn
-                          ? 'Toma una carta del mazo o del descarte'
-                          : 'Arrastra al descarte o a una combinación'}
-                  </p>
 
-                  {canClaimDiscard && (
-                    <button
-                      onClick={onClaimDiscard}
-                      disabled={alreadyClaimed}
-                      className={`mt-1 px-3 py-1.5 rounded-lg text-sm font-semibold transition-all shadow ${
-                        alreadyClaimed
-                          ? 'bg-green-700 text-green-300 cursor-default'
-                          : 'bg-yellow-400 text-yellow-900 hover:bg-yellow-300 active:scale-95'
-                      }`}
-                    >
-                      {alreadyClaimed ? '✓ Solicitada' : '¡La quiero!'}
-                    </button>
-                  )}
+                  {/* Vertical divider */}
+                  <div className="w-px bg-green-700/50 self-stretch shrink-0" />
+
+                  {/* Melded combinations */}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-green-300/70 uppercase tracking-wider mb-1.5">
+                      Combinaciones bajadas
+                    </p>
+                    <MeldedCombinations
+                      players={playersForModals}
+                      canAcceptDrop={canDropOnCombination}
+                      draggedCard={draggedCard}
+                    />
+                  </div>
                 </div>
 
-                {/* Divider */}
-                <div className="hidden md:block w-px bg-green-700/50 self-stretch" />
-                <div className="md:hidden h-px bg-green-700/50" />
+                {/* Status text */}
+                <p className="text-xs text-green-200 mt-1.5 text-center">
+                  {!isMyTurn
+                    ? `Esperando a ${currentPlayer.name}...`
+                    : gameState.phase !== 'playing'
+                      ? 'Ronda finalizada'
+                      : !hasDrawnThisTurn
+                        ? 'Toma una carta del mazo o del descarte'
+                        : 'Arrastra al descarte o a una combinación'}
+                </p>
 
-                {/* Right: Melded combinations */}
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-green-300/70 uppercase tracking-wider mb-2">
-                    Combinaciones bajadas
-                  </p>
-                  <MeldedCombinations
-                    players={playersForModals}
-                    canAcceptDrop={canDropOnCombination}
-                    draggedCard={draggedCard}
-                  />
-                </div>
+                {canClaimDiscard && (
+                  <button
+                    onClick={onClaimDiscard}
+                    disabled={alreadyClaimed}
+                    className={`mt-1.5 w-full px-3 py-1.5 rounded-lg text-sm font-semibold transition-all shadow ${
+                      alreadyClaimed
+                        ? 'bg-green-700 text-green-300 cursor-default'
+                        : 'bg-yellow-400 text-yellow-900 hover:bg-yellow-300 active:scale-95'
+                    }`}
+                  >
+                    {alreadyClaimed ? '✓ Solicitada' : '¡La quiero!'}
+                  </button>
+                )}
+              </div>
+
+              {/* Hand + Bajar Juego */}
+              <div className="sm:flex-1 flex flex-col gap-1.5">
+                <PlayerHand
+                  cards={myHand}
+                  selectedCards={selectedCards}
+                  onCardClick={handleCardClick}
+                  disabled={actionsDisabled || !hasDrawnThisTurn}
+                  dragDisabled={gameState.phase !== 'playing'}
+                  savedOrder={cardOrders[myPlayerId]}
+                  onOrderChange={(ids) =>
+                    setCardOrders((prev) => ({ ...prev, [myPlayerId]: ids }))
+                  }
+                  hiddenCardId={hiddenCardId}
+                  getCardRectRef={getCardRectRef}
+                  onNewCardRendered={handleNewCardRendered}
+                />
+                <ActionButtons
+                  hasDrawn={isMyTurn && hasDrawnThisTurn}
+                  hasMelded={myPlayer.hasMelded}
+                  selectedCount={selectedCards.length}
+                  onMeld={() => setShowMeldModal(true)}
+                  onAddToCombination={() => setShowAddModal(true)}
+                  onDiscard={handleDiscard}
+                />
               </div>
             </div>
-
-            {/* My hand */}
-            <PlayerHand
-              cards={myHand}
-              selectedCards={selectedCards}
-              onCardClick={handleCardClick}
-              disabled={actionsDisabled || !hasDrawnThisTurn}
-              dragDisabled={gameState.phase !== 'playing'}
-              savedOrder={cardOrders[myPlayerId]}
-              onOrderChange={(ids) =>
-                setCardOrders((prev) => ({ ...prev, [myPlayerId]: ids }))
-              }
-              hiddenCardId={hiddenCardId}
-              getCardRectRef={getCardRectRef}
-              onNewCardRendered={handleNewCardRendered}
-            />
-
-            {/* Action buttons */}
-            <ActionButtons
-              hasDrawn={isMyTurn && hasDrawnThisTurn}
-              hasMelded={myPlayer.hasMelded}
-              selectedCount={selectedCards.length}
-              onMeld={() => setShowMeldModal(true)}
-              onAddToCombination={() => setShowAddModal(true)}
-              onDiscard={handleDiscard}
-            />
           </div>
         </div>
 
