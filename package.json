@@ -18,6 +18,10 @@
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.3"
   },
+  "optionalDependencies": {
+    "lightningcss-linux-x64-gnu": "1.30.2",
+    "lightningcss-linux-x64-musl": "1.30.2"
+  },
   "overrides": {
     "picomatch": "^4.0.3"
   },
