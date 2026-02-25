@@ -1,16 +1,16 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useCallback } from 'react';
+import { useDroppable } from '@dnd-kit/core';
 import { Card as CardComponent } from '@/components/ui/Card';
 import { Card } from '@/lib/types/game.types';
-import { DRAG_TYPE } from './PlayerHand';
+import { DropData } from './dragTypes';
 
 interface DiscardPileProps {
   topCard: Card | null;
   onDraw: () => void;
   disabled: boolean;
   canAcceptDrop: boolean;
-  onDropCard: (card: Card) => void;
   cardRef?: React.RefObject<HTMLDivElement | null>;
 }
 
@@ -19,47 +19,35 @@ export const DiscardPile: React.FC<DiscardPileProps> = ({
   onDraw,
   disabled,
   canAcceptDrop,
-  onDropCard,
   cardRef,
 }) => {
-  const [isDragOver, setIsDragOver] = useState(false);
+  const dropData: DropData = { type: 'discard-pile' };
+  const { setNodeRef, isOver } = useDroppable({
+    id: 'discard-pile',
+    disabled: !canAcceptDrop,
+    data: dropData,
+  });
 
-  const handleDragOver = (e: React.DragEvent) => {
-    if (!canAcceptDrop) return;
-    if (!e.dataTransfer.types.includes(DRAG_TYPE)) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    setIsDragOver(true);
-  };
+  // Compose droppable ref with the cardRef passed from GameTable
+  const composedRef = useCallback(
+    (el: HTMLDivElement | null) => {
+      setNodeRef(el);
+      if (cardRef) {
+        (cardRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
+      }
+    },
+    [setNodeRef, cardRef],
+  );
 
-  const handleDragLeave = () => {
-    setIsDragOver(false);
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(false);
-    if (!canAcceptDrop) return;
-
-    const data = e.dataTransfer.getData(DRAG_TYPE);
-    if (!data) return;
-
-    const card: Card = JSON.parse(data);
-    onDropCard(card);
-  };
+  const isDragOver = isOver && canAcceptDrop;
 
   return (
-    <div
-      className="flex flex-col items-center gap-2"
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
-    >
+    <div className="flex flex-col items-center gap-2">
       <p className="text-xs text-green-200 font-medium">Descarte</p>
 
       {topCard ? (
         <div
-          ref={cardRef}
+          ref={composedRef}
           className={`rounded-xl transition-all duration-200 ${
             isDragOver
               ? 'ring-4 ring-red-400 ring-offset-2 ring-offset-transparent scale-105'
@@ -74,7 +62,7 @@ export const DiscardPile: React.FC<DiscardPileProps> = ({
         </div>
       ) : (
         <div
-          ref={cardRef}
+          ref={composedRef}
           className={`w-20 h-[7.5rem] border-2 border-dashed rounded-lg flex items-center justify-center transition-all duration-200 ${
             isDragOver
               ? 'border-red-400 bg-red-400/20 scale-105'
@@ -87,7 +75,7 @@ export const DiscardPile: React.FC<DiscardPileProps> = ({
         </div>
       )}
 
-      {isDragOver && canAcceptDrop ? (
+      {isDragOver ? (
         <p className="text-xs text-red-300 font-medium animate-pulse">
           Soltar para descartar
         </p>

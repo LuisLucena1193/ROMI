@@ -1,19 +1,24 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import {
+  SortableContext,
+  horizontalListSortingStrategy,
+  useSortable,
+  arrayMove,
+} from '@dnd-kit/sortable';
+import { useDndMonitor, DragOverEvent, DragEndEvent } from '@dnd-kit/core';
 import { Card as CardComponent } from '@/components/ui/Card';
 import { Card } from '@/lib/types/game.types';
 import { CardModel } from '@/lib/models/Card';
-
-export const DRAG_TYPE = 'application/romi-card';
+import type { HandCardDragData } from './dragTypes';
 
 interface PlayerHandProps {
   cards: Card[];
   selectedCards: Card[];
   onCardClick: (card: Card) => void;
-  disabled: boolean;
-  onDragCardStart?: (card: Card) => void;
-  onDragCardEnd?: () => void;
+  disabled: boolean;       // disables click-to-select
+  dragDisabled?: boolean;  // disables drag entirely; defaults to `disabled` if omitted
   savedOrder?: string[];
   onOrderChange?: (orderedIds: string[]) => void;
   hiddenCardId?: string | null;
@@ -21,16 +26,88 @@ interface PlayerHandProps {
   onNewCardRendered?: (cardId: string) => void;
 }
 
-const OVERLAP = '-1.25rem';
-const GAP = '2rem';
+// Overlap classes: more aggressive on mobile so cards fit on small screens
+const OVERLAP_CLASS = '-ml-12 md:-ml-5'; // mobile: -3rem, desktop: -1.25rem
+const GAP_CLASS = 'ml-8';               // 2rem gap spacer when reordering
+
+// ---- SortableCard sub-component ----
+
+interface SortableCardProps {
+  card: Card;
+  index: number;
+  selected: boolean;
+  isHidden: boolean;
+  showGapBefore: boolean;
+  clickDisabled: boolean;
+  dragDisabled: boolean;
+  onCardClick: (card: Card) => void;
+  setRef: (el: HTMLDivElement | null) => void;
+}
+
+const SortableCard: React.FC<SortableCardProps> = ({
+  card,
+  index,
+  selected,
+  isHidden,
+  showGapBefore,
+  clickDisabled,
+  dragDisabled,
+  onCardClick,
+  setRef,
+}) => {
+  const dragData: HandCardDragData = { type: 'hand-card', card, handIndex: index };
+
+  const { setNodeRef, isDragging, attributes, listeners } = useSortable({
+    id: card.id,
+    data: dragData,
+    disabled: dragDisabled,
+  });
+
+  // Compose dnd-kit ref with parent's cardRefs map (for getCardRectRef / FlyingCard)
+  const composedRef = useCallback(
+    (el: HTMLDivElement | null) => {
+      setNodeRef(el);
+      setRef(el);
+    },
+    [setNodeRef, setRef],
+  );
+
+  const marginClass = showGapBefore
+    ? GAP_CLASS
+    : index > 0
+      ? OVERLAP_CLASS
+      : '';
+
+  return (
+    <div
+      ref={composedRef}
+      {...attributes}
+      {...listeners}
+      className={`flex-shrink-0 relative transition-all duration-200 ${marginClass} ${
+        isDragging ? 'opacity-30 scale-95' : ''
+      } ${selected ? 'z-10' : ''}`}
+      style={{
+        opacity: isHidden ? 0 : undefined,
+      }}
+    >
+      <CardComponent
+        card={card}
+        size="medium"
+        selected={selected}
+        onClick={clickDisabled ? undefined : () => onCardClick(card)}
+      />
+    </div>
+  );
+};
+
+// ---- PlayerHand ----
 
 export const PlayerHand: React.FC<PlayerHandProps> = ({
   cards,
   selectedCards,
   onCardClick,
   disabled,
-  onDragCardStart,
-  onDragCardEnd,
+  dragDisabled,
   savedOrder,
   onOrderChange,
   hiddenCardId,
@@ -40,15 +117,12 @@ export const PlayerHand: React.FC<PlayerHandProps> = ({
   const [orderedCards, setOrderedCards] = useState<Card[]>(() =>
     [...cards].sort(CardModel.compare),
   );
-  const [dragIndex, setDragIndex] = useState<number | null>(null);
-  const [gapIndex, setGapIndex] = useState<number | null>(null);
+  const [overId, setOverId] = useState<string | null>(null);
 
   const savedOrderRef = useRef(savedOrder);
   savedOrderRef.current = savedOrder;
 
   const cardRefs = useRef<Map<number, HTMLDivElement>>(new Map());
-  // Midpoints captured at drag start to avoid jitter from layout shifts
-  const dragMidpoints = useRef<number[]>([]);
 
   const prevCardIdsRef = useRef<Set<string>>(new Set(cards.map((c) => c.id)));
   const onNewCardRenderedRef = useRef(onNewCardRendered);
@@ -123,78 +197,34 @@ export const PlayerHand: React.FC<PlayerHandProps> = ({
     reportOrder([...orderedCards].sort(CardModel.compare));
   };
 
-  // --- Drag handlers ---
+  const isSelected = (card: Card) =>
+    selectedCards.some((c) => c.id === card.id);
 
-  const handleDragStart = (e: React.DragEvent, index: number) => {
-    const card = orderedCards[index];
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData(DRAG_TYPE, JSON.stringify(card));
-
-    // Snapshot card midpoints before any visual changes
-    const midpoints: number[] = [];
-    for (let i = 0; i < orderedCards.length; i++) {
-      const el = cardRefs.current.get(i);
-      if (el) {
-        const rect = el.getBoundingClientRect();
-        midpoints.push(rect.left + rect.width / 2);
-      }
-    }
-    dragMidpoints.current = midpoints;
-
-    requestAnimationFrame(() => setDragIndex(index));
-    onDragCardStart?.(card);
-  };
-
-  // Container-level dragOver: calculate insertion gap from pointer X vs. snapshotted midpoints
-  const handleContainerDragOver = (e: React.DragEvent) => {
-    if (dragIndex === null) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-
-    const pointerX = e.clientX;
-    const midpoints = dragMidpoints.current;
-    let newGap = orderedCards.length;
-
-    for (let i = 0; i < midpoints.length; i++) {
-      if (pointerX < midpoints[i]) {
-        newGap = i;
-        break;
-      }
-    }
-
-    // No gap if dropping at the same position (no-op)
-    if (newGap === dragIndex || newGap === dragIndex + 1) {
-      setGapIndex(null);
-    } else {
-      setGapIndex(newGap);
-    }
-  };
-
-  const handleContainerDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    if (dragIndex !== null && gapIndex !== null) {
-      const next = [...orderedCards];
-      const [dragged] = next.splice(dragIndex, 1);
-      const insertAt = gapIndex > dragIndex ? gapIndex - 1 : gapIndex;
-      next.splice(insertAt, 0, dragged);
-      reportOrder(next);
-    }
-    setDragIndex(null);
-    setGapIndex(null);
-  };
-
-  const handleDragEnd = () => {
-    setDragIndex(null);
-    setGapIndex(null);
-    onDragCardEnd?.();
-  };
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    // Only clear gap when pointer leaves the container entirely
-    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-      setGapIndex(null);
-    }
-  };
+  // Watch drag-over events to show gap indicator
+  useDndMonitor({
+    onDragOver(event: DragOverEvent) {
+      const active = event.active.data.current as HandCardDragData | undefined;
+      if (!active || active.type !== 'hand-card') return;
+      // Only show gap when hovering another hand card
+      const overId = event.over?.id as string | undefined;
+      const isHandCard = orderedCards.some((c) => c.id === overId);
+      setOverId(isHandCard ? (overId ?? null) : null);
+    },
+    onDragEnd(event: DragEndEvent) {
+      setOverId(null);
+      const active = event.active.data.current as HandCardDragData | undefined;
+      if (!active || active.type !== 'hand-card') return;
+      // Only reorder if dropping onto another hand card (same container)
+      const overCardId = event.over?.id as string | undefined;
+      if (!overCardId) return;
+      const isHandCard = orderedCards.some((c) => c.id === overCardId);
+      if (!isHandCard) return;
+      const oldIndex = orderedCards.findIndex((c) => c.id === active.card.id);
+      const newIndex = orderedCards.findIndex((c) => c.id === overCardId);
+      if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return;
+      reportOrder(arrayMove(orderedCards, oldIndex, newIndex));
+    },
+  });
 
   const setCardRef = useCallback(
     (el: HTMLDivElement | null, index: number) => {
@@ -203,9 +233,6 @@ export const PlayerHand: React.FC<PlayerHandProps> = ({
     },
     [],
   );
-
-  const isSelected = (card: Card) =>
-    selectedCards.some((c) => c.id === card.id);
 
   return (
     <div className="bg-white rounded-lg shadow-md p-4">
@@ -228,55 +255,34 @@ export const PlayerHand: React.FC<PlayerHandProps> = ({
         </div>
       </div>
 
-      <div
-        className="overflow-x-auto cards-scroll pb-2"
-        onDragOver={handleContainerDragOver}
-        onDrop={handleContainerDrop}
-        onDragLeave={handleDragLeave}
-      >
-        <div className="flex min-w-min py-1 px-1">
-          {orderedCards.map((card, index) => {
-            const isBeingDragged = dragIndex === index;
-            const showGapBefore = gapIndex === index && dragIndex !== null;
-            const selected = isSelected(card);
-            const isHidden = hiddenCardId === card.id;
+      <div className="overflow-x-auto cards-scroll pb-2">
+        <SortableContext
+          items={orderedCards.map((c) => c.id)}
+          strategy={horizontalListSortingStrategy}
+        >
+          <div className="flex min-w-min py-1 px-1">
+            {orderedCards.map((card, index) => {
+              const showGapBefore = overId === card.id;
+              const selected = isSelected(card);
+              const isHidden = hiddenCardId === card.id;
 
-            return (
-              <div
-                key={card.id}
-                ref={(el) => setCardRef(el, index)}
-                draggable
-                onDragStart={(e) => handleDragStart(e, index)}
-                onDragEnd={handleDragEnd}
-                className={`flex-shrink-0 relative transition-all duration-200 ${
-                  isBeingDragged ? 'opacity-30 scale-95' : ''
-                } ${selected ? 'z-10' : ''}`}
-                style={{
-                  marginLeft: showGapBefore
-                    ? GAP
-                    : index > 0
-                      ? OVERLAP
-                      : undefined,
-                  opacity: isHidden ? 0 : undefined,
-                }}
-              >
-                <CardComponent
+              return (
+                <SortableCard
+                  key={card.id}
                   card={card}
-                  size="medium"
+                  index={index}
                   selected={selected}
-                  onClick={disabled ? undefined : () => onCardClick(card)}
+                  isHidden={isHidden}
+                  showGapBefore={showGapBefore}
+                  clickDisabled={disabled}
+                  dragDisabled={dragDisabled ?? disabled}
+                  onCardClick={onCardClick}
+                  setRef={(el) => setCardRef(el, index)}
                 />
-              </div>
-            );
-          })}
-          {/* Gap indicator after last card */}
-          {gapIndex === orderedCards.length && dragIndex !== null && (
-            <div
-              className="flex-shrink-0 transition-all duration-200"
-              style={{ width: GAP }}
-            />
-          )}
-        </div>
+              );
+            })}
+          </div>
+        </SortableContext>
       </div>
     </div>
   );
