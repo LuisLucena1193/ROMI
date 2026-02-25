@@ -239,11 +239,22 @@ export class CombinationModel {
    * This avoids the bug where sorting changes joker positions, causing
    * a subsequent resolveJokerMappings call to produce different results.
    */
+  /** Sort non-joker sequence cards with ace-high awareness. */
+  private static sortSequenceValues(cards: Card[]): Card[] {
+    const values = new Set(cards.map((c) => c.value));
+    const useAceHigh = values.has(1) && values.has(13) && !values.has(2);
+    return [...cards].sort((a, b) => {
+      const av = useAceHigh && a.value === 1 ? 14 : a.value;
+      const bv = useAceHigh && b.value === 1 ? 14 : b.value;
+      return av - bv;
+    });
+  }
+
   static sortWithMappings(cards: Card[]): { cards: Card[]; jokerMappings: JokerMapping[] } {
     const jokers = cards.filter((c) => CardModel.isJoker(c));
     if (jokers.length === 0 || jokers.length === cards.length) {
       return {
-        cards: [...cards].sort((a, b) => a.value - b.value),
+        cards: CombinationModel.sortSequenceValues(cards),
         jokerMappings: [],
       };
     }
@@ -332,8 +343,8 @@ export class CombinationModel {
       };
     }
 
-    // No more jokers — just sort normally
-    const sorted = newCards.sort((a, b) => a.value - b.value);
+    // No more jokers — sort with ace-high awareness
+    const sorted = CombinationModel.sortSequenceValues(newCards);
     return {
       combination: { type: 'sequence', cards: sorted },
       jokerCard,
