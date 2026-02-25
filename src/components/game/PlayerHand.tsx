@@ -7,7 +7,7 @@ import {
   useSortable,
   arrayMove,
 } from '@dnd-kit/sortable';
-import { useDndMonitor, DragOverEvent, DragEndEvent } from '@dnd-kit/core';
+import { useDndMonitor, DragEndEvent } from '@dnd-kit/core';
 import { Card as CardComponent } from '@/components/ui/Card';
 import { Card } from '@/lib/types/game.types';
 import { CardModel } from '@/lib/models/Card';
@@ -28,7 +28,6 @@ interface PlayerHandProps {
 
 // Overlap classes: more aggressive on mobile so cards fit on small screens
 const OVERLAP_CLASS = '-ml-12 md:-ml-5'; // mobile: -3rem, desktop: -1.25rem
-const GAP_CLASS = 'ml-8';               // 2rem gap spacer when reordering
 
 // ---- SortableCard sub-component ----
 
@@ -37,7 +36,6 @@ interface SortableCardProps {
   index: number;
   selected: boolean;
   isHidden: boolean;
-  showGapBefore: boolean;
   clickDisabled: boolean;
   dragDisabled: boolean;
   onCardClick: (card: Card) => void;
@@ -49,7 +47,6 @@ const SortableCard: React.FC<SortableCardProps> = ({
   index,
   selected,
   isHidden,
-  showGapBefore,
   clickDisabled,
   dragDisabled,
   onCardClick,
@@ -72,11 +69,7 @@ const SortableCard: React.FC<SortableCardProps> = ({
     [setNodeRef, setRef],
   );
 
-  const marginClass = showGapBefore
-    ? GAP_CLASS
-    : index > 0
-      ? OVERLAP_CLASS
-      : '';
+  const marginClass = index > 0 ? OVERLAP_CLASS : '';
 
   return (
     <div
@@ -88,6 +81,7 @@ const SortableCard: React.FC<SortableCardProps> = ({
       } ${selected ? 'z-10' : ''}`}
       style={{
         opacity: isHidden ? 0 : undefined,
+        touchAction: 'none',
       }}
     >
       <CardComponent
@@ -117,7 +111,6 @@ export const PlayerHand: React.FC<PlayerHandProps> = ({
   const [orderedCards, setOrderedCards] = useState<Card[]>(() =>
     [...cards].sort(CardModel.compare),
   );
-  const [overId, setOverId] = useState<string | null>(null);
 
   const savedOrderRef = useRef(savedOrder);
   savedOrderRef.current = savedOrder;
@@ -200,21 +193,11 @@ export const PlayerHand: React.FC<PlayerHandProps> = ({
   const isSelected = (card: Card) =>
     selectedCards.some((c) => c.id === card.id);
 
-  // Watch drag-over events to show gap indicator
+  // Reorder cards when one is dropped onto another hand card
   useDndMonitor({
-    onDragOver(event: DragOverEvent) {
-      const active = event.active.data.current as HandCardDragData | undefined;
-      if (!active || active.type !== 'hand-card') return;
-      // Only show gap when hovering another hand card
-      const overId = event.over?.id as string | undefined;
-      const isHandCard = orderedCards.some((c) => c.id === overId);
-      setOverId(isHandCard ? (overId ?? null) : null);
-    },
     onDragEnd(event: DragEndEvent) {
-      setOverId(null);
       const active = event.active.data.current as HandCardDragData | undefined;
       if (!active || active.type !== 'hand-card') return;
-      // Only reorder if dropping onto another hand card (same container)
       const overCardId = event.over?.id as string | undefined;
       if (!overCardId) return;
       const isHandCard = orderedCards.some((c) => c.id === overCardId);
@@ -262,7 +245,6 @@ export const PlayerHand: React.FC<PlayerHandProps> = ({
         >
           <div className="flex min-w-min py-1 px-1">
             {orderedCards.map((card, index) => {
-              const showGapBefore = overId === card.id;
               const selected = isSelected(card);
               const isHidden = hiddenCardId === card.id;
 
@@ -273,7 +255,6 @@ export const PlayerHand: React.FC<PlayerHandProps> = ({
                   index={index}
                   selected={selected}
                   isHidden={isHidden}
-                  showGapBefore={showGapBefore}
                   clickDisabled={disabled}
                   dragDisabled={dragDisabled ?? disabled}
                   onCardClick={onCardClick}
